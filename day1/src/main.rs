@@ -45,7 +45,6 @@ fn solve2(amended_calibrations: &Vec<String>) -> u32 {
         new_string
     }).collect();
 
-    println!("Original: {:?} Replaced: {:?}", amended_calibrations, replaced_calibrations);
     solve(&replaced_calibrations)
 }
 
