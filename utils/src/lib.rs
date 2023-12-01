@@ -17,8 +17,8 @@ pub fn load_puzzle_data<T, F: FnOnce(String) -> T>(day: u32, parser: F) -> T {
     load_puzzle(puzzle_path, parser)
 }
 
-pub fn load_puzzle_test<T, F: FnOnce(String) -> T>(day: u32, parser: F) -> T {
-    let puzzle_filename = format!("../puzzles/day{day}_test.txt");
+pub fn load_puzzle_test<T, F: FnOnce(String) -> T>(day: u32, test_number: u32, parser: F) -> T {
+    let puzzle_filename = format!("../puzzles/day{day}_test{test_number}.txt");
     let puzzle_path = Path::new(&puzzle_filename);
     load_puzzle(puzzle_path, parser)
 }

@@ -2,6 +2,7 @@
 
 from glob import glob
 from os import system, mkdir
+from shutil import copy
 from pathlib import Path
 
 try:
@@ -16,8 +17,13 @@ system(f"cd {new_day} && cargo add --path ../utils utils")
 with open(Path("puzzles") / f"{new_day}.txt", "a"):
     pass
 
-with open(Path("puzzles") / f"{new_day}_test.txt", "a"):
+with open(Path("puzzles") / f"{new_day}_test1.txt", "a"):
+    pass
+
+with open(Path("puzzles") / f"{new_day}_test2.txt", "a"):
     pass
 
 with open(Path(f"{new_day}") / f"puzzle.txt", "a"):
     pass
+
+copy("template.rs", Path(f"{new_day}") / "src" / "main.rs")
