@@ -1,15 +1,17 @@
 #!/bin/env python3
 
 from glob import glob
-from os import system, mkdir
+from os import system, makedirs
 from shutil import copy
 from pathlib import Path
 
 try:
-    new_day = "day{}".format(sorted(int(d.replace("day", "")) for d in glob("day*")).pop() + 1)
+    day_num = sorted(int(d.replace("day", "")) for d in glob("day*")).pop() + 1
 except:
-    new_day = "day1"
-    mkdir("puzzles")
+    day_num = 1
+    makedirs("puzzles", exist_ok=True)
+
+new_day = "day{}".format(day_num)
 
 system(f"cargo init {new_day}")
 system(f"cd {new_day} && cargo add --path ../utils utils")
@@ -26,4 +28,9 @@ with open(Path("puzzles") / f"{new_day}_test2.txt", "a"):
 with open(Path(f"{new_day}") / f"puzzle.txt", "a"):
     pass
 
-copy("template.rs", Path(f"{new_day}") / "src" / "main.rs")
+
+with open("template.rs_", "r") as fd:
+    with open(Path(f"{new_day}") / "src" / "main.rs", "w") as ofd:
+        ofd.write(fd.read().replace(r"{{DAY_NUM}}", str(day_num)))
+
+copy("template.rs_", Path(f"{new_day}") / "src" / "main.rs")
