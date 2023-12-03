@@ -16,7 +16,7 @@ fn parser(s: String) -> Vec<Elf> {
         .collect()
 }
 
-fn solve(elves: &Vec<Elf>) -> Elf {
+fn solve(elves: &Vec<Elf>) -> &Elf {
     elves.into_iter().max_by_key(|e| e.calories).unwrap()
 }
 

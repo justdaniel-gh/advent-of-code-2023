@@ -32,5 +32,3 @@ with open(Path(f"{new_day}") / f"puzzle.txt", "a"):
 with open("template.rs_", "r") as fd:
     with open(Path(f"{new_day}") / "src" / "main.rs", "w") as ofd:
         ofd.write(fd.read().replace(r"{{DAY_NUM}}", str(day_num)))
-
-copy("template.rs_", Path(f"{new_day}") / "src" / "main.rs")
