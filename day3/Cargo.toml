@@ -1,9 +1,9 @@
 [package]
-name = "utils"
+name = "day3"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-enum-iterator = "1.4.1"
+utils = { version = "0.1.0", path = "../utils" }

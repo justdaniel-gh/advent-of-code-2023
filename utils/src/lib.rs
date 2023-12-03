@@ -7,6 +7,8 @@ use std::{
     path::Path,
 };
 
+use enum_iterator::Sequence;
+
 fn load_puzzle<T, F: FnOnce(String) -> T>(puzzle_path: &Path, parser: F) -> T {
     parser(String::from_utf8(fs::read(puzzle_path).expect("Unable to open input!")).unwrap())
 }
@@ -61,8 +63,8 @@ pub trait Grid {
     fn get_cell(&self, x: isize, y: isize) -> Option<&Self::Item>;
     fn get_cell_mut(&mut self, x: isize, y: isize) -> Option<&mut Self::Item>;
 
-    fn first_cell_coord(&self) -> (isize, isize);
-    fn last_cell_coord(&self) -> (isize, isize);
+    fn first_cell_coord(&self) -> Point;
+    fn last_cell_coord(&self) -> Point;
 
     fn get_row(&self, y: isize) -> Option<&[Self::Item]>;
 }
@@ -123,14 +125,32 @@ where
         self.cells.iter()
     }
 
+    pub fn cell_iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
+        self.cells.iter_mut()
+    }
+
     /// Returns an iterator moving in the specified direction, starting at (returning first) the x,y coord
     pub fn direction_iter_at(
         &self,
         x: isize,
         y: isize,
-        direction: Direction,
-    ) -> DirectionIter<'_, T> {
-        DirectionIter {
+        direction: CardinalDirection,
+    ) -> GridDirectionIter<'_, T> {
+        GridDirectionIter {
+            grid: self,
+            direction,
+            next_x: x,
+            next_y: y,
+        }
+    }
+
+    pub fn direction_iter_at_mut(
+        &mut self,
+        x: isize,
+        y: isize,
+        direction: CardinalDirection,
+    ) -> GridDirectionIterMut<'_, T> {
+        GridDirectionIterMut {
             grid: self,
             direction,
             next_x: x,
@@ -139,14 +159,14 @@ where
     }
 }
 
-impl<T> Grid for StaticGrid<T> 
+impl<T> Grid for StaticGrid<T>
 where
     T: Default + Clone,
 {
     type Item = T;
 
     fn get_cell(&self, x: isize, y: isize) -> Option<&Self::Item> {
-        if x >= self.num_cols as isize || y >= self.num_rows as isize {
+        if x >= self.num_cols as isize || y >= self.num_rows as isize || x < 0 || y < 0 {
             None
         } else {
             self.cells.get((y as usize * self.num_cols) + x as usize)
@@ -154,20 +174,28 @@ where
     }
 
     fn get_cell_mut(&mut self, x: isize, y: isize) -> Option<&mut Self::Item> {
-        self.cells
-            .get_mut((y as usize * self.num_cols) + x as usize)
+        if x >= self.num_cols as isize || y >= self.num_rows as isize || x < 0 || y < 0 {
+            None
+        } else {
+            self.cells
+                .get_mut((y as usize * self.num_cols) + x as usize)
+        }
     }
 
-    fn first_cell_coord(&self) -> (isize, isize) {
-        (0, 0)
+    fn first_cell_coord(&self) -> Point {
+        Point::new(0, 0)
     }
 
-    fn last_cell_coord(&self) -> (isize, isize) {
-        (self.num_cols as isize - 1, self.num_rows as isize - 1)
+    fn last_cell_coord(&self) -> Point {
+        Point::new(self.num_cols as isize - 1, self.num_rows as isize - 1)
     }
 
     fn get_row(&self, y: isize) -> Option<&[Self::Item]> {
-        Some(self.row(y as usize))
+        if y >= self.num_rows as isize || y < 0 {
+            None
+        } else {
+            Some(self.row(y as usize))
+        }
     }
 }
 
@@ -191,29 +219,34 @@ where
 /*
     Enums
 */
-#[derive(Debug)]
-pub enum Direction {
+#[derive(Debug, PartialEq, Clone, Sequence)]
+pub enum CardinalDirection {
     North,
-    South,
-    East,
-    West,
     NorthEast,
-    NorthWest,
+    East,
     SouthEast,
+    South,
     SouthWest,
+    West,
+    NorthWest,
+}
+
+pub enum ClockDirection {
+    Clockwise,
+    CounterClockwise,
 }
 
 /*
     Structs
 */
-pub struct DirectionIter<'a, T> {
+pub struct GridDirectionIter<'a, T> {
     grid: &'a dyn Grid<Item = T>,
-    direction: Direction,
+    direction: CardinalDirection,
     next_x: isize,
     next_y: isize,
 }
 
-impl<'a, T> Iterator for DirectionIter<'a, T>
+impl<'a, T> Iterator for GridDirectionIter<'a, T>
 where
     T: Default + Clone,
 {
@@ -223,31 +256,31 @@ where
         match self.grid.get_cell(self.next_x, self.next_y) {
             Some(item) => {
                 match self.direction {
-                    Direction::North => {
+                    CardinalDirection::North => {
                         self.next_y -= 1;
                     }
-                    Direction::South => {
+                    CardinalDirection::South => {
                         self.next_y += 1;
                     }
-                    Direction::East => {
+                    CardinalDirection::East => {
                         self.next_x += 1;
                     }
-                    Direction::West => {
+                    CardinalDirection::West => {
                         self.next_x -= 1;
                     }
-                    Direction::NorthEast => {
+                    CardinalDirection::NorthEast => {
                         self.next_x += 1;
                         self.next_y -= 1;
                     }
-                    Direction::NorthWest => {
+                    CardinalDirection::NorthWest => {
                         self.next_x -= 1;
                         self.next_y -= 1;
                     }
-                    Direction::SouthEast => {
+                    CardinalDirection::SouthEast => {
                         self.next_x += 1;
                         self.next_y += 1;
                     }
-                    Direction::SouthWest => {
+                    CardinalDirection::SouthWest => {
                         self.next_x -= 1;
                         self.next_y += 1;
                     }
@@ -259,15 +292,14 @@ where
     }
 }
 
-pub struct DirectionIterMut<'a, T>
-{
+pub struct GridDirectionIterMut<'a, T> {
     grid: &'a mut dyn Grid<Item = T>,
-    direction: Direction,
+    direction: CardinalDirection,
     next_x: isize,
     next_y: isize,
 }
 
-impl<'a, T> Iterator for DirectionIterMut<'a, T>
+impl<'a, T> Iterator for GridDirectionIterMut<'a, T>
 where
     T: Default + Clone,
 {
@@ -277,47 +309,124 @@ where
         match self.grid.get_cell_mut(self.next_x, self.next_y) {
             Some(item) => {
                 match self.direction {
-                    Direction::North => {
+                    CardinalDirection::North => {
                         self.next_y -= 1;
                     }
-                    Direction::South => {
+                    CardinalDirection::South => {
                         self.next_y += 1;
                     }
-                    Direction::East => {
+                    CardinalDirection::East => {
                         self.next_x += 1;
                     }
-                    Direction::West => {
+                    CardinalDirection::West => {
                         self.next_x -= 1;
                     }
-                    Direction::NorthEast => {
+                    CardinalDirection::NorthEast => {
                         self.next_x += 1;
                         self.next_y -= 1;
                     }
-                    Direction::NorthWest => {
+                    CardinalDirection::NorthWest => {
                         self.next_x -= 1;
                         self.next_y -= 1;
                     }
-                    Direction::SouthEast => {
+                    CardinalDirection::SouthEast => {
                         self.next_x += 1;
                         self.next_y += 1;
                     }
-                    Direction::SouthWest => {
+                    CardinalDirection::SouthWest => {
                         self.next_x -= 1;
                         self.next_y += 1;
                     }
                 }
 
-                unsafe {
-                    Some(&mut *(item as *mut T))
-                }
+                unsafe { Some(&mut *(item as *mut T)) }
             }
             None => None,
         }
     }
 }
 
-pub struct SubGridIterMut<'a, T>
+/* Iterates over all of the cells surrounding a center cell
+ * Does not return center cell
+ **/
+pub struct BoxIter<'a, T> {
+    grid: &'a dyn Grid<Item = T>,
+    start_direction: &'static CardinalDirection,
+    next_direction: CardinalDirection,
+    clock_direction: ClockDirection,
+    center_x: isize,
+    center_y: isize,
+    halt: bool
+}
+
+impl<'a, T> BoxIter<'a, T>
+where
+    T: Default + Clone,
 {
+    pub fn new(
+        grid: &'a dyn Grid<Item = T>,
+        start_direction: &'static CardinalDirection,
+        clock_direction: ClockDirection,
+        center_x: isize,
+        center_y: isize,
+    ) -> BoxIter<'a, T> {
+        BoxIter {
+            grid,
+            start_direction,
+            next_direction: start_direction.clone(),
+            clock_direction,
+            center_x,
+            center_y,
+            halt: false
+        }
+    }
+}
+
+impl<'a, T> Iterator for BoxIter<'a, T>
+where
+    T: Default + Clone,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.halt {
+            return None
+        }
+        // Loop until we find a cell or exhaust directions
+        loop {
+            let (this_x, this_y) = match self.next_direction {
+                CardinalDirection::North => (self.center_x, self.center_y - 1),
+                CardinalDirection::South => (self.center_x, self.center_y + 1),
+                CardinalDirection::East => (self.center_x + 1, self.center_y),
+                CardinalDirection::West => (self.center_x - 1, self.center_y),
+                CardinalDirection::NorthEast => (self.center_x + 1, self.center_y - 1),
+                CardinalDirection::NorthWest => (self.center_x - 1, self.center_y - 1),
+                CardinalDirection::SouthEast => (self.center_x + 1, self.center_y + 1),
+                CardinalDirection::SouthWest => (self.center_x - 1, self.center_y + 1),
+            };
+
+            let this_cell = self.grid.get_cell(this_x, this_y);
+
+            match self.clock_direction {
+                ClockDirection::Clockwise => {
+                    self.next_direction = enum_iterator::next_cycle(&self.next_direction).unwrap()
+                }
+                ClockDirection::CounterClockwise => {
+                    self.next_direction =
+                        enum_iterator::previous_cycle(&self.next_direction).unwrap()
+                }
+            };
+            if self.next_direction.eq(self.start_direction) {
+                self.halt = true;
+            }
+            if this_cell.is_some() {
+                return this_cell;
+            }
+        }
+    }
+}
+
+pub struct SubGridIterMut<'a, T> {
     grid: &'a mut dyn GrowableGrid<T>,
     start_x: isize,
     start_y: isize,
@@ -329,11 +438,25 @@ pub struct SubGridIterMut<'a, T>
 /// Iterate over all cells within a SubGrid of an existing grid
 /// Expands underlying grid to meet size
 impl<'a, T> SubGridIterMut<'a, T> {
-    pub fn new(grid: &'a mut dyn GrowableGrid<T>, start_x: isize, start_y: isize, end_x: isize, end_y: isize) -> Self {
-        println!("first: {:?} - last: {:?}", grid.first_cell_coord(), grid.last_cell_coord());
+    pub fn new(
+        grid: &'a mut dyn GrowableGrid<T>,
+        start_x: isize,
+        start_y: isize,
+        end_x: isize,
+        end_y: isize,
+    ) -> Self {
+        println!(
+            "first: {:?} - last: {:?}",
+            grid.first_cell_coord(),
+            grid.last_cell_coord()
+        );
         grid.get_cell_or_add(start_x, start_y);
         grid.get_cell_or_add(end_x, end_y);
-        println!("first: {:?} - last: {:?}", grid.first_cell_coord(), grid.last_cell_coord());
+        println!(
+            "first: {:?} - last: {:?}",
+            grid.first_cell_coord(),
+            grid.last_cell_coord()
+        );
         println!("New sub grid: {start_x},{start_y} - {end_x},{end_y}");
         SubGridIterMut {
             grid,
@@ -360,7 +483,47 @@ where
         }
         //println!("{}: {next_x},{next_y}", self.ndx);
         self.ndx += 1;
-        self.grid.get_cell_mut(next_x, next_y).map(|item| unsafe { (&mut *(item as *mut T), (next_x, next_y)) })
+        self.grid
+            .get_cell_mut(next_x, next_y)
+            .map(|item| unsafe { (&mut *(item as *mut T), (next_x, next_y)) })
+    }
+}
+
+/**
+ * Returns (x,y) coordinates starting at (start_x, start_y) and ends at (end_x, end_y)
+ *
+ * start_x,start_y defines the upper left bounds
+ * end_x,end_y defines the lower right bounds
+ */
+pub struct GridCoordinateIter {
+    start: Point,
+    end: Point,
+    next_point: Point,
+}
+
+impl GridCoordinateIter {
+    pub fn new(start: Point, end: Point) -> GridCoordinateIter {
+        GridCoordinateIter { start, end, next_point: start }
+    }
+}
+
+impl Iterator for GridCoordinateIter {
+    type Item = Point;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let this_point = Point {
+            x: self.next_point.x,
+            y: self.next_point.y,
+        };
+        self.next_point.x = this_point.x + 1;
+        if self.next_point.x > self.end.x {
+            self.next_point.y += 1;
+            self.next_point.x = self.start.x;
+        }
+        if self.next_point.y > self.end.y {
+            return None;
+        }
+        Some(this_point)
     }
 }
 
@@ -404,9 +567,9 @@ where
         &self,
         start_x: isize,
         start_y: isize,
-        direction: Direction,
-    ) -> DirectionIter<'_, CellType> {
-        DirectionIter {
+        direction: CardinalDirection,
+    ) -> GridDirectionIter<'_, CellType> {
+        GridDirectionIter {
             grid: self,
             direction,
             next_x: start_x,
@@ -414,18 +577,21 @@ where
         }
     }
 
-    pub fn cell_iter(&self) -> std::iter::Flatten<std::slice::Iter<'_, Vec<CellType>>>
-    {
+    pub fn cell_iter(&self) -> std::iter::Flatten<std::slice::Iter<'_, Vec<CellType>>> {
         self.cells.iter().flatten()
     }
 
-    pub fn row_iter(&self) -> std::slice::Iter<'_, Vec<CellType>>
-    {
+    pub fn row_iter(&self) -> std::slice::Iter<'_, Vec<CellType>> {
         self.cells.iter()
     }
 
-    pub fn sub_grid_iter_mut(&mut self, start_x: isize, start_y: isize, end_x: isize, end_y: isize) -> SubGridIterMut<'_, CellType>
-    {
+    pub fn sub_grid_iter_mut(
+        &mut self,
+        start_x: isize,
+        start_y: isize,
+        end_x: isize,
+        end_y: isize,
+    ) -> SubGridIterMut<'_, CellType> {
         SubGridIterMut::new(self, start_x, start_y, end_x, end_y)
     }
 
@@ -532,16 +698,24 @@ where
         }
     }
 
-    fn first_cell_coord(&self) -> (isize, isize) {
-        (0 - self.center_x as isize + self.start_x, 0 - self.center_y as isize + self.start_y)
+    fn first_cell_coord(&self) -> Point {
+        Point::new(
+            0 - self.center_x as isize + self.start_x,
+            0 - self.center_y as isize + self.start_y,
+        )
     }
 
-    fn last_cell_coord(&self) -> (isize, isize) {
-        (self.num_cols as isize - 1 - self.center_x as isize + self.start_x, self.num_rows as isize - 1 - self.center_y as isize + self.start_y)
+    fn last_cell_coord(&self) -> Point {
+        Point::new(
+            self.num_cols as isize - 1 - self.center_x as isize + self.start_x,
+            self.num_rows as isize - 1 - self.center_y as isize + self.start_y,
+        )
     }
 
     fn get_row(&self, y: isize) -> Option<&[Self::Item]> {
-        let y_ndx = self.translate_local_to_indices(0, self.translate_absolute_to_local(0, y).1).1;
+        let y_ndx = self
+            .translate_local_to_indices(0, self.translate_absolute_to_local(0, y).1)
+            .1;
         Some(self.cells[y_ndx as usize].as_slice())
     }
 }
@@ -587,10 +761,7 @@ where
     }
 }
 
-impl<CellType> GrowableGrid<CellType> for DynamicGrid<CellType> 
-where
-    CellType: Default + Clone,
-{}
+impl<CellType> GrowableGrid<CellType> for DynamicGrid<CellType> where CellType: Default + Clone {}
 
 impl<CellType> Default for DynamicGrid<CellType>
 where
@@ -627,17 +798,23 @@ pub struct Point2D<CoordType> {
     pub y: CoordType,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Copy)]
 pub struct Point {
     pub x: isize,
     pub y: isize,
+}
+
+impl Point {
+    pub fn new(x: isize, y: isize) -> Point {
+        Point { x, y }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::fmt::Display;
 
-    use crate::{DynamicGrid, StaticGrid, Growable};
+    use crate::{DynamicGrid, Growable, StaticGrid};
 
     /*
     Test Structs
@@ -670,7 +847,7 @@ mod tests {
             c.value = 'a';
         }
 
-        let mut i = g.direction_iter_at(0, 0, crate::Direction::East);
+        let mut i = g.direction_iter_at(0, 0, crate::CardinalDirection::East);
         assert_eq!(i.next().unwrap().value, 'a');
         assert_eq!(i.next().unwrap().value, 'a');
     }
@@ -702,25 +879,25 @@ mod tests {
         assert_eq!(g.num_rows, 11);
         assert_eq!(g.num_cols, 11);
         let mut s: String = "".to_string();
-        for c in g.direction_iter(500, 0, crate::Direction::South) {
+        for c in g.direction_iter(500, 0, crate::CardinalDirection::South) {
             s.push(c.value);
         }
         assert_eq!(s, "*....S");
 
         let mut s: String = "".to_string();
-        for c in g.direction_iter(500, 0, crate::Direction::North) {
+        for c in g.direction_iter(500, 0, crate::CardinalDirection::North) {
             s.push(c.value);
         }
         assert_eq!(s, "*....N");
 
         let mut s: String = "".to_string();
-        for c in g.direction_iter(500, 0, crate::Direction::East) {
+        for c in g.direction_iter(500, 0, crate::CardinalDirection::East) {
             s.push(c.value);
         }
         assert_eq!(s, "*....E");
 
         let mut s: String = "".to_string();
-        for c in g.direction_iter(500, 0, crate::Direction::West) {
+        for c in g.direction_iter(500, 0, crate::CardinalDirection::West) {
             s.push(c.value);
         }
         assert_eq!(s, "*....W");
